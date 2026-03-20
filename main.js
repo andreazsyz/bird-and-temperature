@@ -312,8 +312,8 @@ const BIRD_ICONS = {
 
 const STATUS_COLORS = {
   'Least Concern':         '#4CAF50',
-  'Near Threatened':       '#FFC107',
-  'Vulnerable':            '#FF6F00',
+  'Near Threatened':       '#29B6F6',
+  'Vulnerable':            '#FFC107',
   'Endangered':            '#F44336',
   'Critically Endangered': '#8E24AA'
 };
@@ -337,12 +337,6 @@ function drawBirds(date) {
       .attr('data-status', d.status)
       .attr('transform', `translate(${pt.x},${pt.y})`)
       .style('cursor', 'pointer');
-
-    g.append('ellipse')
-      .attr('class', 'bird-shadow')
-      .attr('cx', 1).attr('cy', 9 * icon.scale)
-      .attr('rx', 5 * icon.scale).attr('ry', 2)
-      .attr('fill', 'rgba(0,0,0,0.18)');
 
     g.append('circle')
       .attr('class', 'bird-glow')
@@ -418,9 +412,6 @@ function applyHighlight() {
 
     g.select('.bird-glow')
       .attr('opacity', isSelected ? 0.3 : 0);
-
-    g.select('.bird-shadow')
-      .attr('opacity', hasSel && !isSelected ? 0.2 : 0.7);
   });
 }
 
