@@ -180,10 +180,6 @@ const heatLayer = new HeatLayer().addTo(map);
 // ─────────────────────────────────────────────────────────────
 const birdSvg = d3.select('#bird-svg');
 
-const birdColor = d3.scaleOrdinal()
-  .domain(['Least Concern', 'Near Threatened', 'Vulnerable', 'Endangered', 'Critically Endangered'])
-  .range(['#4CAF50', '#FFC107', '#FF9800', '#F44336', '#8E24AA']);
-
 function syncSvgSize() {
   const size = map.getSize();
   birdSvg.attr('width', size.x).attr('height', size.y);
@@ -253,16 +249,19 @@ d3.csv('data/bird.csv').then(raw => {
   updateHeatmap(currentDate);
   drawBirds(currentDate);
 
-  // 填充图例
+  // legend — use STATUS_COLORS + SVG bird path instead of Font Awesome
   const container = document.getElementById('bird-legend');
-  birdColor.domain().forEach(status => {
+  Object.entries(STATUS_COLORS).forEach(([status, color]) => {
     const row = document.createElement('div');
     row.className = 'bird-row';
-    row.innerHTML = `<span class="bird-icon fa" style="color:${birdColor(status)}">&#xf1d8;</span><span>${status}</span>`;
+    row.innerHTML = `
+      <svg width="20" height="20" viewBox="-14 -10 28 20" style="flex-shrink:0">
+        <path d="${BIRD_ICONS[status].path}" fill="${color}" stroke="rgba(255,255,255,0.6)" stroke-width="0.5"/>
+      </svg>
+      <span>${status}</span>`;
     container.appendChild(row);
   });
 
-  map.on('moveend zoomend', () => drawBirds(currentDate));
 }).catch(err => console.error('bird data loading failed:', err));
 
 // ─────────────────────────────────────────────────────────────
@@ -285,25 +284,99 @@ function updateHeatmap(date) {
 // ─────────────────────────────────────────────────────────────
 // 9. plot birds based on selected date
 // ─────────────────────────────────────────────────────────────
+
+const BIRD_ICONS = {
+  'Least Concern': {
+    path: 'M0,-4 C-2,-6 -7,-7 -13,-5 C-9,-4 -5,-2 0,0 C5,-2 9,-4 13,-5 C7,-7 2,-6 0,-4Z M0,0 C-1,2 -1,4 0,5 C1,4 1,2 0,0Z',
+    scale: 1.1
+  },
+  'Near Threatened': {
+    path: 'M0,-3 C-2,-5 -7,-5 -11,-3 C-8,-3 -4,-1 0,1 C4,-1 8,-3 11,-5 C7,-6 2,-5 0,-3Z M0,1 C-0.5,3 -0.5,5 0,6 C0.5,5 0.5,3 0,1Z',
+    scale: 1.0
+  },
+  'Vulnerable': {
+    path: 'M0,-7 C-2,-7 -3,-5 -3,-3 C-3,-1 -2,0 0,1 C2,0 3,-1 3,-3 C3,-5 2,-7 0,-7Z M-3,-3 C-6,-2 -7,0 -6,2 L-3,1Z M3,-3 C6,-2 7,0 6,2 L3,1Z M-1,1 L-2,5 M1,1 L2,5 M0,1 L0,5',
+    scale: 1.05,
+    strokeWidth: 0.6
+  },
+  'Endangered': {
+    path: 'M0,-5 C-1,-4 -2,-2 -2,0 C-2,2 -1,3 0,4 C1,3 2,2 2,0 C2,-2 1,-4 0,-5Z M-2,0 C-5,1 -7,3 -7,5 C-5,3 -3,2 -2,0Z M2,0 C5,1 7,3 7,5 C5,3 3,2 2,0Z M-0.5,-5 C-1,-6.5 -0.5,-8 0,-8 C0.5,-8 1,-6.5 0.5,-5',
+    scale: 0.95
+  },
+  'Critically Endangered': {
+    path: 'M0,-8 C-4,-8 -5,-5 -5,-3 C-5,-1 -4,1 -2,2 L-2,4 L2,4 L2,2 C4,1 5,-1 5,-3 C5,-5 4,-8 0,-8Z M-2.5,-5 C-3.5,-5 -3.5,-3.5 -2.5,-3.5 C-1.5,-3.5 -1.5,-5 -2.5,-5Z M2.5,-5 C1.5,-5 1.5,-3.5 2.5,-3.5 C3.5,-3.5 3.5,-5 2.5,-5Z M-1,4 L-1.5,7 M1,4 L1.5,7 M-6,-2 C-8,0 -9,2 -8,4 M6,-2 C8,0 9,2 8,4',
+    scale: 1.0,
+    strokeWidth: 0.7
+  }
+};
+
+const STATUS_COLORS = {
+  'Least Concern':         '#4CAF50',
+  'Near Threatened':       '#FFC107',
+  'Vulnerable':            '#FF6F00',
+  'Endangered':            '#F44336',
+  'Critically Endangered': '#8E24AA'
+};
+
+let selectedSpecies = null;
+
 function drawBirds(date) {
   if (!date || !birdData.length) return;
   const filtered = birdData.filter(d => d.startDate <= date && d.endDate >= date);
-  const birds = birdSvg.selectAll('.bird').data(filtered, d => d.ID || (d.name + d.lat + d.lon));
-  birds.exit().remove();
 
-  const enter = birds.enter()
-    .append('text')
-    .attr('class', 'bird fa')
-    .style('font-size', '14px')
-    .text('\uf1d8')
-    .attr('text-anchor', 'middle')
-    .attr('dominant-baseline', 'central')
-    .on('mouseover', function(event, d) {
-      d3.select(this).style('font-size', '22px');
+  birdSvg.selectAll('.bird-marker').remove();
+
+  filtered.forEach(d => {
+    const pt = map.latLngToContainerPoint(L.latLng(d.lat, d.lon));
+    const icon = BIRD_ICONS[d.status] || BIRD_ICONS['Least Concern'];
+    const color = STATUS_COLORS[d.status] || '#888';
+
+    const g = birdSvg.append('g')
+      .attr('class', 'bird-marker')
+      .attr('data-name', d.name)
+      .attr('data-status', d.status)
+      .attr('transform', `translate(${pt.x},${pt.y})`)
+      .style('cursor', 'pointer');
+
+    g.append('ellipse')
+      .attr('class', 'bird-shadow')
+      .attr('cx', 1).attr('cy', 9 * icon.scale)
+      .attr('rx', 5 * icon.scale).attr('ry', 2)
+      .attr('fill', 'rgba(0,0,0,0.18)');
+
+    g.append('circle')
+      .attr('class', 'bird-glow')
+      .attr('r', 14)
+      .attr('fill', color)
+      .attr('opacity', 0);
+
+    g.append('path')
+      .attr('class', 'bird-path')
+      .attr('d', icon.path)
+      .attr('transform', `scale(${icon.scale})`)
+      .attr('fill', color)
+      .attr('stroke', 'rgba(255,255,255,0.6)')
+      .attr('stroke-width', icon.strokeWidth || 0.5)
+      .attr('opacity', 1)
+      .style('transition', 'opacity 0.2s, stroke-width 0.15s');
+
+    g.on('click', function(event) {
+      event.stopPropagation();
+      const name = this.getAttribute('data-name');
+      selectedSpecies = (selectedSpecies === name) ? null : name;
+      applyHighlight();
+    });
+
+    g.on('mouseover', function(event) {
+      const name = this.getAttribute('data-name');
+      const status = this.getAttribute('data-status');
+      const ico = BIRD_ICONS[status] || BIRD_ICONS['Least Concern'];
+      d3.select(this).select('.bird-path')
+        .attr('transform', `scale(${ico.scale * 1.5})`);
       d3.select('body').append('div').attr('class', 'tooltip')
         .style('left', event.pageX + 12 + 'px')
         .style('top',  event.pageY + 12 + 'px')
-        .html(`<b>${d.name}</b><br>Status: ${d.status}`);
+        .html(`<b>${name}</b><br>Status: ${status}<br><i>${selectedSpecies === name ? 'click to deselect' : 'click to highlight species'}</i>`);
     })
     .on('mousemove', function(event) {
       d3.select('.tooltip')
@@ -311,15 +384,47 @@ function drawBirds(date) {
         .style('top',  event.pageY + 12 + 'px');
     })
     .on('mouseout', function() {
-      d3.select(this).style('font-size', '14px');
+      const status = this.getAttribute('data-status');
+      const ico = BIRD_ICONS[status] || BIRD_ICONS['Least Concern'];
+      d3.select(this).select('.bird-path')
+        .attr('transform', `scale(${ico.scale})`);
       d3.selectAll('.tooltip').remove();
     });
+  });
 
-  enter.merge(birds)
-    .attr('fill', d => birdColor(d.status))
-    .attr('x', d => map.latLngToContainerPoint(L.latLng(d.lat, d.lon)).x)
-    .attr('y', d => map.latLngToContainerPoint(L.latLng(d.lat, d.lon)).y);
+  d3.select('#map').on('click.birdDeselect', function() {
+    if (selectedSpecies !== null) {
+      selectedSpecies = null;
+      applyHighlight();
+    }
+  });
+
+  applyHighlight();
 }
+
+function applyHighlight() {
+  birdSvg.selectAll('.bird-marker').each(function() {
+    const g = d3.select(this);
+    const name   = this.getAttribute('data-name');
+    const status = this.getAttribute('data-status');
+    const icon   = BIRD_ICONS[status] || BIRD_ICONS['Least Concern'];
+    const isSelected = selectedSpecies === name;
+    const hasSel     = selectedSpecies !== null;
+
+    g.select('.bird-path')
+      .attr('opacity', hasSel && !isSelected ? 0.15 : 1)
+      .attr('stroke', isSelected ? 'white' : 'rgba(255,255,255,0.6)')
+      .attr('stroke-width', isSelected ? 1.4 : (icon.strokeWidth || 0.5));
+
+    g.select('.bird-glow')
+      .attr('opacity', isSelected ? 0.3 : 0);
+
+    g.select('.bird-shadow')
+      .attr('opacity', hasSel && !isSelected ? 0.2 : 0.7);
+  });
+}
+
+map.on('moveend zoomend', () => drawBirds(currentDate));
 
 // ─────────────────────────────────────────────────────────────
 // 10. time slider initialization

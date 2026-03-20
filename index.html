@@ -65,7 +65,9 @@
       pointer-events: none;
       z-index: 500;
     }
-    .bird { pointer-events: all; cursor: pointer; }
+    #bird-svg .bird-marker {
+      pointer-events: all;
+    }
 
     #legend {
       position: absolute;
@@ -115,7 +117,7 @@
     .bird-icon { font-size: 13px; }
 
     .tooltip {
-      position: absolute;
+      position: fixed;
       background: rgba(255, 255, 255, 0.97);
       color: #1e293b;
       padding: 7px 12px;
