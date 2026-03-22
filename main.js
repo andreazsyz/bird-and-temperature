@@ -431,4 +431,17 @@ function initSlider(min, max) {
     updateHeatmap(d);
     drawBirds(d);
   });
+  document.getElementById('btn-prev').addEventListener('click', () => {
+    if (+slider.value > 0) {
+      slider.value = +slider.value - 1;
+      slider.dispatchEvent(new Event('input'));
+    }
+  });
+
+  document.getElementById('btn-next').addEventListener('click', () => {
+    if (+slider.value < +slider.max) {
+      slider.value = +slider.value + 1;
+      slider.dispatchEvent(new Event('input'));
+    }
+  });
 }
